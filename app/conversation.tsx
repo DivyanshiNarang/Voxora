@@ -65,5 +65,11 @@ export default function ConversationScreen() {
     );
   }
 
-  return <ConversationMode scenario={scenario} onExit={() => router.back()} />;
+  return (
+    <ConversationMode
+      scenario={scenario}
+      language={selectedLanguage}
+      onExit={() => router.back()}
+    />
+  );
 }

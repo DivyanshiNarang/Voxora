@@ -23,8 +23,12 @@ export default function LanguageProvider({ children }: PropsWithChildren) {
         .from("profiles")
         .update({ active_languages: [lang] })
         .eq("id", session.user.id)
-        .then(() => {})
-        .catch(console.error);
+        .then(
+          ({ error }) => {
+            if (error) console.error(error);
+          },
+          console.error,
+        );
     }
   };
 

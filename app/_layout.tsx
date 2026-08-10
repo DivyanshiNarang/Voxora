@@ -1,3 +1,5 @@
+import "react-native-url-polyfill/auto";
+
 import IntroScreen from "@/components/auth/IntroScreen";
 import { useAuth } from "@/ctx/AuthContext";
 import { useDeepLinking } from "@/hooks/useDeepLinking";

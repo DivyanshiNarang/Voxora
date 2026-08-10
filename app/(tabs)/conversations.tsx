@@ -339,25 +339,36 @@ export default function ConversationsScreen() {
               contentContainerStyle={styles.modalContent}
             >
               {isPhrasebookOpen ? (
-                (selectedScenario?.phrasebook ?? []).map((p, idx) => (
-                  <View
-                    key={`${p.hanzi}-${idx}`}
-                    style={[
-                      styles.phraseRow,
-                      {
-                        borderColor: Colors.borderColor,
-                      },
-                    ]}
-                  >
-                    <ThemedText style={styles.phraseZh}>{p.hanzi}</ThemedText>
-                    <ThemedText style={{ color: Colors.subduedTextColor }}>
-                      {p.pinyin}
-                    </ThemedText>
-                    <ThemedText style={{ color: Colors.subduedTextColor }}>
-                      {p.english}
-                    </ThemedText>
-                  </View>
-                ))
+                (selectedScenario?.phrasebook ?? []).map((p, idx) => {
+                  const primary = "hanzi" in p ? p.hanzi : "kanji" in p ? p.kanji : p.text;
+                  const secondary =
+                    "pinyin" in p
+                      ? p.pinyin
+                      : "romaji" in p
+                        ? `${p.kana} · ${p.romaji}`
+                        : p.ipa;
+                  return (
+                    <View
+                      key={`${primary}-${idx}`}
+                      style={[
+                        styles.phraseRow,
+                        {
+                          borderColor: Colors.borderColor,
+                        },
+                      ]}
+                    >
+                      <ThemedText style={styles.phraseZh}>{primary}</ThemedText>
+                      {secondary ? (
+                        <ThemedText style={{ color: Colors.subduedTextColor }}>
+                          {secondary}
+                        </ThemedText>
+                      ) : null}
+                      <ThemedText style={{ color: Colors.subduedTextColor }}>
+                        {p.english}
+                      </ThemedText>
+                    </View>
+                  );
+                })
               ) : (
                 <>
                   <View style={styles.modalIconContainer}>
@@ -418,7 +429,7 @@ export default function ConversationsScreen() {
                         color="#F59E0B"
                       />
                       <ThemedText style={styles.guidelineText}>
-                        Don't share sensitive information
+                        Don&apos;t share sensitive information
                       </ThemedText>
                     </View>
                   </View>

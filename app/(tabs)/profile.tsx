@@ -14,7 +14,7 @@ import Toast from "react-native-toast-message";
 export default function ProfileContent() {
   const { isPremium, premiumExpiresAt, profile, user } = useAuth();
   const [paywallVisible, setPaywallVisible] = useState(false);
-  const { stats, loading } = useSpeakingListningStats();
+  const { stats } = useSpeakingListningStats();
 
   const handleSignOut = async () => {
     try {
@@ -32,7 +32,7 @@ export default function ProfileContent() {
           text1: 'Signed out successfully',
         });
       }
-    } catch (error) {
+    } catch {
       try {
         await supabase.auth.signOut({ scope: "local" });
         Toast.show({

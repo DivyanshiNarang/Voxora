@@ -51,13 +51,14 @@ export default function AudioPrompt({
 }) {
   const { selectedLanguage } = useLanguage();
   const questionPhrase = getQuestionPhrase(currentQuestion, selectedLanguage);
-  const playbackDisabled = !selectedOption && (isPlaying || hasListenedToAudio);
+  const hasSelectedOption = selectedOption != null;
+  const playbackDisabled = !hasSelectedOption && (isPlaying || hasListenedToAudio);
   return (
     <>
       <Pressable
         disabled={playbackDisabled}
         onPress={
-          selectedOption
+          hasSelectedOption
             ? isRecognizing
               ? onStopRecord
               : () => requestAnimationFrame(onStartRecord)
@@ -90,7 +91,7 @@ export default function AudioPrompt({
           style={[
             styles.playButton,
             {
-              backgroundColor: selectedOption
+              backgroundColor: hasSelectedOption
                 ? isRecognizing
                   ? "#ef4444"
                   : Colors.primaryAccentColor
@@ -101,7 +102,7 @@ export default function AudioPrompt({
             },
           ]}
         >
-          {selectedOption ? (
+          {hasSelectedOption ? (
             isRecognizing ? (
               <MaterialIcons name="stop" size={36} color="white" />
             ) : (
@@ -114,7 +115,7 @@ export default function AudioPrompt({
           )}
         </Animated.View>
       </Pressable>
-      {selectedOption && isRecognizing ? (
+      {hasSelectedOption && isRecognizing ? (
         <View style={styles.recordingStatus}>
           <View style={styles.recordingIndicatorLarge}>
             <View style={styles.recordingDotLarge}></View>
@@ -131,7 +132,7 @@ export default function AudioPrompt({
           { minHeight: currentQuestion.type === "listening_mc" ? 0 : 50 },
         ]}
       >
-        {selectedOption ? (
+        {hasSelectedOption ? (
           <View style={styles.recordingPromptTop}>
             <ThemedText style={styles.recordingPromptText}>
               {isRecognizing

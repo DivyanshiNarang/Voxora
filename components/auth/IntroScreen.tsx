@@ -3,7 +3,6 @@ import {
   EBGaramond_500Medium_Italic,
   useFonts,
 } from "@expo-google-fonts/eb-garamond";
-import AntDesign from "@expo/vector-icons/AntDesign";
 import Fontisto from "@expo/vector-icons/Fontisto";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEffect, useState } from "react";
@@ -29,7 +28,9 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { verticalScale } from "react-native-size-matters";
-import EmailAuth from "./EmailAuth";
+// Magic-link (OTP) email flow — superseded by password-based auth below.
+// import EmailAuth from "./EmailAuth";
+import PasswordAuth from "./PasswordAuth";
 
 const { width, height } = Dimensions.get("window");
 const videoSource = require("../../assets/videos/intro.mp4");
@@ -251,7 +252,7 @@ export default function IntroScreen() {
       </View>
 
       <View style={styles.buttonsContainer}>
-        <Pressable
+        {/* <Pressable
           style={styles.loginButton}
           onPress={() => console.log("Apple login")}
         >
@@ -262,8 +263,8 @@ export default function IntroScreen() {
             style={styles.appleIcon}
           />
           <Text style={styles.buttonText}>Continue with Apple</Text>
-        </Pressable>
-        <Pressable
+        </Pressable> */}
+        {/* <Pressable
           style={styles.loginButton}
           onPress={() => console.log("Google login")}
         >
@@ -274,7 +275,7 @@ export default function IntroScreen() {
             style={styles.appleIcon}
           />
           <Text style={styles.buttonText}>Continue with Google</Text>
-        </Pressable>
+        </Pressable> */}
         <Pressable
           style={styles.loginButton}
           onPress={() => animateToEmailView("email")}
@@ -292,14 +293,18 @@ export default function IntroScreen() {
   );
 
   const renderEmailView = () => (
-    <EmailAuth
+    // <EmailAuth
+    //   onBack={() => animateToEmailView("login")}
+    //   menuContentAnimatedStyle={menuContentAnimatedStyle}
+    // />
+    <PasswordAuth
       onBack={() => animateToEmailView("login")}
       menuContentAnimatedStyle={menuContentAnimatedStyle}
     />
   );
 
   const dynamicMenuHeight =
-    keyboardHeight > 0 ? MENU_HEIGHT + keyboardHeight + 50 : MENU_HEIGHT + 100;
+    keyboardHeight > 0 ? MENU_HEIGHT + keyboardHeight + 50 : MENU_HEIGHT + 250;
 
   return (
     <View style={{ flex: 1, backgroundColor: "black" }}>

@@ -194,7 +194,7 @@ export default function OnboardingScreen() {
 
   const renderStep1Language = () => (<View style={styles.stepContainer}>
     <ThemedText type="title" style={styles.title}>
-      Which language you're interested in?
+      Which language you&apos;re interested in?
     </ThemedText>
     <ThemedText style={styles.subtitle}>Select the language you want to learn.</ThemedText>
 

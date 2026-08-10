@@ -1,5 +1,7 @@
-import { ConversationScenario } from "@/constants/CourseData";
+import { ConversationScenario, SupportedLanguage } from "@/constants/CourseData";
 import { Colors } from "@/constants/theme";
+import { getEdgeFunctionErrorMessage } from "@/lib/edgeFunctionError";
+import { PRONUNCIATION_LABEL, SCRIPT_LABEL, TTS_LANGUAGE } from "@/lib/phraseUtils";
 import { recordConversationTurn } from "@/lib/speakingListeningStats";
 import { supabase } from "@/utils/supabase";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -28,16 +30,28 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   text: string;
-  hanzi?: string;
-  pinyin?: string;
+  primaryText?: string;
+  pronunciation?: string;
   english?: string;
 }
 
+const GREETINGS: Record<
+  SupportedLanguage,
+  { primaryText: string; pronunciation: string; english: string }
+> = {
+  mandarin: { primaryText: "你好！", pronunciation: "Nǐ hǎo!", english: "Hello!" },
+  french: { primaryText: "Bonjour !", pronunciation: "Bonjour !", english: "Hello!" },
+  spanish: { primaryText: "¡Hola!", pronunciation: "¡Hola!", english: "Hello!" },
+  japanese: { primaryText: "こんにちは！", pronunciation: "Konnichiwa!", english: "Hello!" },
+};
+
 export default function ConversationMode({
   scenario,
+  language,
   onExit,
 }: {
   scenario: ConversationScenario;
+  language: SupportedLanguage;
   onExit: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -50,23 +64,28 @@ export default function ConversationMode({
   const scrollViewRef = useRef<ScrollView>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const lastSpokenAssistantMessageId = useRef<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      text: "你好！",
-      hanzi: "你好！",
-      pinyin: "Nǐ hǎo!",
-      english: "Hello!",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const greeting = GREETINGS[language];
+    return [
+      {
+        id: "1",
+        role: "assistant",
+        text: greeting.primaryText,
+        primaryText: greeting.primaryText,
+        pronunciation: greeting.pronunciation,
+        english: greeting.english,
+      },
+    ];
+  });
 
   const confettiRef = useRef<any>(null);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       Speech.stop();
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync();
@@ -82,7 +101,7 @@ export default function ConversationMode({
 
   const handlePlayAudio = (text: string) => {
     Speech.stop();
-    Speech.speak(text, { language: "zh-CN" });
+    Speech.speak(text, { language: TTS_LANGUAGE[language] });
   };
 
   const callChatCompletion = async (params: {
@@ -96,13 +115,15 @@ export default function ConversationMode({
           content: m.text,
         })),
         scenario,
+        language,
         inputAudio: params.inputAudio,
       },
     });
 
     if (error) {
-      console.error("Error calling chat-completion:", error);
-      return null;
+      const message = await getEdgeFunctionErrorMessage(error);
+      console.error("Error calling chat-completion:", message);
+      throw new Error(message);
     }
     return data;
   };
@@ -111,7 +132,7 @@ export default function ConversationMode({
     data: any,
     options?: { replaceUserMessageId?: string },
   ) => {
-    if (!data) return;
+    if (!data || !isMountedRef.current) return;
 
     setMessages((prev) => {
       let newMessages = [...prev];
@@ -123,7 +144,7 @@ export default function ConversationMode({
         data.userTranscript.trim()
       ) {
         const transcript = data.userTranscript.trim();
-        const transcriptPinyin =
+        const transcriptPronunciation =
           typeof data.userTranscriptPinyin === "string"
             ? data.userTranscriptPinyin.trim()
             : undefined;
@@ -133,8 +154,8 @@ export default function ConversationMode({
             ? {
               ...m,
               text: transcript,
-              hanzi: transcript,
-              pinyin: transcriptPinyin || m.pinyin,
+              primaryText: transcript,
+              pronunciation: transcriptPronunciation || m.pronunciation,
             }
             : m,
         );
@@ -144,8 +165,8 @@ export default function ConversationMode({
         id: (Date.now() + 1).toString(),
         role: "assistant",
         text: data.text || data.hanzi,
-        hanzi: data.hanzi,
-        pinyin: data.pinyin,
+        primaryText: data.hanzi,
+        pronunciation: data.pinyin,
         english: data.english,
       };
 
@@ -154,9 +175,10 @@ export default function ConversationMode({
 
     if (data.conversationComplete) {
       setTimeout(() => {
+        if (!isMountedRef.current) return;
         setConversationComplete(true);
         setTimeout(() => {
-          confettiRef.current?.start();
+          if (isMountedRef.current) confettiRef.current?.start();
         }, 400);
         Animated.parallel([
           Animated.spring(scaleAnim, {
@@ -216,17 +238,24 @@ export default function ConversationMode({
           },
         });
 
+        if (!isMountedRef.current) {
+          recording.stopAndUnloadAsync();
+          return;
+        }
+
         recordingRef.current = recording;
         setIsRecording(true);
       } catch (err) {
         console.error("Failed to start recording:", err);
         recordingRef.current = null;
-        setIsRecording(false);
-        Toast.show({
-          type: 'error',
-          text1: 'Recording Error',
-          text2: 'Could not start recording.'
-        });
+        if (isMountedRef.current) {
+          setIsRecording(false);
+          Toast.show({
+            type: 'error',
+            text1: 'Recording Error',
+            text2: 'Could not start recording.'
+          });
+        }
       }
       return;
     }
@@ -235,28 +264,32 @@ export default function ConversationMode({
     try {
       const recording = recordingRef.current;
       if (!recording) {
-        setIsRecording(false);
+        if (isMountedRef.current) setIsRecording(false);
         return;
       }
-      setIsRecording(false);
+      if (isMountedRef.current) setIsRecording(false);
 
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       recordingRef.current = null;
 
       if (!uri) {
-        setIsLoading(false);
-        Toast.show({
-          type: 'error',
-          text1: 'Recording Error',
-          text2: 'No audio was recorded.',
-        });
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          Toast.show({
+            type: 'error',
+            text1: 'Recording Error',
+            text2: 'No audio was recorded.',
+          });
+        }
         return;
       }
 
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      if (!isMountedRef.current) return;
 
       const voiceMessageId = Date.now().toString();
       setMessages((prev) => [
@@ -276,14 +309,16 @@ export default function ConversationMode({
       void recordConversationTurn();
     } catch (err) {
       console.error("Failed to start/stop recording:", err);
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Recording Error',
-        text2: 'Could not send voice message.',
-      });
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        Toast.show({
+          type: 'error',
+          text1: 'Recording Error',
+          text2: err instanceof Error ? err.message : 'Could not send voice message.',
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   };
 
@@ -308,8 +343,15 @@ export default function ConversationMode({
       void recordConversationTurn();
     } catch (err) {
       console.error("Message sending error:", err);
+      if (isMountedRef.current) {
+        Toast.show({
+          type: 'error',
+          text1: 'Message Error',
+          text2: err instanceof Error ? err.message : 'Could not send message.',
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) setIsLoading(false);
     }
   };
 
@@ -320,7 +362,7 @@ export default function ConversationMode({
     if (lastSpokenAssistantMessageId.current === lastMessage.id) return;
     lastSpokenAssistantMessageId.current = lastMessage.id;
 
-    const speechText = lastMessage.hanzi || lastMessage.text;
+    const speechText = lastMessage.primaryText || lastMessage.text;
     if (!speechText) return;
 
     const timeoutId = setTimeout(() => {
@@ -366,7 +408,9 @@ export default function ConversationMode({
                   color: Colors.primaryAccentColor,
                 }}
               >
-                {showPinyin ? "拼" : "汉"}
+                {showPinyin
+                  ? PRONUNCIATION_LABEL[language].charAt(0)
+                  : SCRIPT_LABEL[language].charAt(0)}
               </ThemedText>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setIsBlurred(!isBlurred)}>
@@ -390,9 +434,9 @@ export default function ConversationMode({
             let content = msg.text;
 
             if (showPinyin) {
-              content = msg.pinyin || msg.text;
+              content = msg.pronunciation || msg.text;
             } else {
-              content = msg.hanzi || msg.text;
+              content = msg.primaryText || msg.text;
             }
 
             return (
@@ -430,7 +474,7 @@ export default function ConversationMode({
                 {!isUser && (
                   <TouchableOpacity
                     style={styles.audioButton}
-                    onPress={() => handlePlayAudio(msg.hanzi || msg.text)}
+                    onPress={() => handlePlayAudio(msg.primaryText || msg.text)}
                   >
                     <Ionicons
                       name="volume-high"

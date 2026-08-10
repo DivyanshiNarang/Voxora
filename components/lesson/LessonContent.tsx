@@ -1,16 +1,17 @@
 import { Question, SpeakingOption } from "@/constants/CourseData";
 import { Colors } from "@/constants/theme";
 import { useLanguage } from "@/ctx/LanguageContext";
+import { getEdgeFunctionErrorMessage } from "@/lib/edgeFunctionError";
 import { incrementLessonCompletion } from "@/lib/lessonProgress";
-import {
-  recordQuestionAnswered,
-  recordQuestionListened,
-} from "@/lib/speakingListeningStats";
 import {
   getOptionPhrase,
   getQuestionPhrase,
   TTS_LANGUAGE,
 } from "@/lib/phraseUtils";
+import {
+  recordQuestionAnswered,
+  recordQuestionListened,
+} from "@/lib/speakingListeningStats";
 import { supabase } from "@/utils/supabase";
 import { Audio, InterruptionModeIOS } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
@@ -65,6 +66,7 @@ export default function LessonContent({
   const [attemptCount, setAttemptCount] = useState(0);
   const [isRecognizing, setIsRecognizing] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
+  const isMountedRef = useRef(true);
   const [transcription, setTranscription] = useState<{
     expected: string;
     said: string;
@@ -84,6 +86,9 @@ export default function LessonContent({
   >({});
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0);
   const [wrongQuestions, setWrongQuestions] = useState<Set<number>>(new Set());
+  const [wrongQuestionSelections, setWrongQuestionSelections] = useState<
+    Record<number, number>
+  >({});
 
   const fadeAnim = useRef(new Animated.Value(0)).current; // Opacity pinyin/hanzi
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -117,12 +122,13 @@ export default function LessonContent({
       return null;
     }
 
-    if (!selectedOption) return null;
+    if (selectedOption == null) return null;
     return currentQuestion.options.find((opt) => opt.id === selectedOption)!;
   }, [selectedOption, currentQuestion, showResult]);
 
   useEffect(() => {
     return () => {
+      isMountedRef.current = false;
       Speech.stop();
       if (recordingRef.current) {
         recordingRef.current.stopAndUnloadAsync();
@@ -152,10 +158,16 @@ export default function LessonContent({
 
         if (attemptCount === 0) {
           setWrongQuestions((prev) => new Set(prev).add(currentQuestion.id));
+          if (selectedOption != null) {
+            setWrongQuestionSelections((prev) => ({
+              ...prev,
+              [currentQuestion.id]: selectedOption,
+            }));
+          }
         }
       }
     }
-  }, [showResult, isCorrect, attemptCount, currentQuestion.id]);
+  }, [showResult, isCorrect, attemptCount, currentQuestion.id, selectedOption]);
 
   useEffect(() => {
     if (isSpeechPlaying && !hasStartedFirstPlay && !hasListenedToAudio) {
@@ -289,21 +301,29 @@ export default function LessonContent({
         },
       });
 
+      if (!isMountedRef.current) {
+        recording.stopAndUnloadAsync();
+        return;
+      }
+
       recordingRef.current = recording;
       setIsRecognizing(true);
     } catch (err) {
       console.error("Failed to start recording:", err);
       recordingRef.current = null;
-      setIsRecognizing(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Recording Error',
-        text2: 'Could not start recording.'
-      })
+      if (isMountedRef.current) {
+        setIsRecognizing(false);
+        Toast.show({
+          type: 'error',
+          text1: 'Recording Error',
+          text2: 'Could not start recording.'
+        })
+      }
     }
   };
 
   const processSpeechResult = (transcript: string) => {
+    if (!isMountedRef.current) return;
     setIsLoading(false);
     setShowResult(true);
 
@@ -353,13 +373,15 @@ export default function LessonContent({
   };
 
   const stopRecording = async () => {
-    setIsLoading(true);
-    setIsRecognizing(false);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+      setIsRecognizing(false);
+    }
 
     try {
       const recording = recordingRef.current;
       if (!recording) {
-        setIsLoading(false);
+        if (isMountedRef.current) setIsLoading(false);
         return;
       }
 
@@ -368,18 +390,22 @@ export default function LessonContent({
       recordingRef.current = null;
 
       if (!uri) {
-        setIsLoading(false);
-        Toast.show({
-          type: 'error',
-          text1: 'Recording Error',
-          text2: 'No audio was recorded.'
-        })
+        if (isMountedRef.current) {
+          setIsLoading(false);
+          Toast.show({
+            type: 'error',
+            text1: 'Recording Error',
+            text2: 'No audio was recorded.'
+          })
+        }
         return;
       }
 
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      if (!isMountedRef.current) return;
 
       const { data, error } = await supabase.functions.invoke(
         "transcribe-audio",
@@ -393,8 +419,10 @@ export default function LessonContent({
         },
       );
 
+      if (!isMountedRef.current) return;
+
       if (error) {
-        throw error;
+        throw new Error(await getEdgeFunctionErrorMessage(error));
       }
 
       if (data?.transcript) {
@@ -404,12 +432,14 @@ export default function LessonContent({
       }
     } catch (err) {
       console.error("Failed to start/stop recording:", err);
-      setIsLoading(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Transcription Error',
-        text2: 'Could not transcribe audio.'
-      })
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        Toast.show({
+          type: 'error',
+          text1: 'Transcription Error',
+          text2: err instanceof Error ? err.message : 'Could not transcribe audio.'
+        })
+      }
     }
   };
 
@@ -486,7 +516,10 @@ export default function LessonContent({
                   ?.english || "";
               phrase = getQuestionPhrase(q, selectedLanguage);
             } else {
-              const option = q.options[0];
+              const selectedId = wrongQuestionSelections[q.id];
+              const option =
+                q.options.find((opt) => opt.id === selectedId) ??
+                q.options[0];
               english = option.english;
               phrase = getOptionPhrase(option, selectedLanguage);
             }
@@ -581,6 +614,7 @@ export default function LessonContent({
           setQuestionAttempts({});
           setCorrectAnswersCount(0);
           setWrongQuestions(new Set());
+          setWrongQuestionSelections({});
           resetState();
         }}
       />

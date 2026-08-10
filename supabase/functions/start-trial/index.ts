@@ -44,18 +44,84 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const expiresAt = new Date(
+    const { data: existingProfile, error: fetchError } = await adminClient
+      .from("profiles")
+      .select("trial_used, is_premium, premium_expires_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    if (existingProfile?.trial_used) {
+      return new Response(
+        JSON.stringify({ error: "Trial already used" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const trialExpiresAt = new Date(
       Date.now() + 7 * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    const { error: updateError } = await adminClient.from("profiles").upsert({
-      id: user.id,
+    const currentExpiresAt = existingProfile?.premium_expires_at
+      ? new Date(existingProfile.premium_expires_at)
+      : null;
+    const alreadyHasLongerPremium =
+      existingProfile?.is_premium === true &&
+      currentExpiresAt !== null &&
+      currentExpiresAt > new Date(trialExpiresAt);
+
+    const expiresAt = alreadyHasLongerPremium
+      ? existingProfile!.premium_expires_at
+      : trialExpiresAt;
+
+    const profileFields = {
       is_premium: true,
       premium_expires_at: expiresAt,
+      trial_used: true,
       updated_at: new Date().toISOString(),
-    });
+    };
+
+    if (!existingProfile) {
+      // No profile row yet: insert it. If one was created concurrently
+      // (e.g. by onboarding or a second start-trial call), fall back to
+      // the guarded update below instead of erroring.
+      const { error: insertError } = await adminClient
+        .from("profiles")
+        .insert({ id: user.id, ...profileFields });
+
+      if (insertError && insertError.code !== "23505") throw insertError;
+      if (!insertError) {
+        return new Response(
+          JSON.stringify({ ok: true, premium_expires_at: expiresAt }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // Guard the write with .eq("trial_used", false) so two concurrent
+    // requests can't both pass the check above and both grant a trial.
+    const { data: updatedRows, error: updateError } = await adminClient
+      .from("profiles")
+      .update(profileFields)
+      .eq("id", user.id)
+      .eq("trial_used", false)
+      .select("id");
 
     if (updateError) throw updateError;
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Trial already used" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     return new Response(
       JSON.stringify({ ok: true, premium_expires_at: expiresAt }),

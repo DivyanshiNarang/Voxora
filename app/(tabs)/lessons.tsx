@@ -212,7 +212,7 @@ export default function LessonsContent() {
                 >
                   <Ionicons name="flash" size={20} color="#FFF" />
                   <ThemedText style={styles.practiceChapterButtonText}>
-                    Review '{chapter.title}'
+                    Review &apos;{chapter.title}&apos;
                   </ThemedText>
                 </TouchableOpacity>
               )}

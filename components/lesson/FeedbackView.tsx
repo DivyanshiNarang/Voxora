@@ -59,14 +59,14 @@ export function FeedbackView({
             <ThemedText
               style={[styles.subtitle, { color: Colors.subduedTextColor }]}
             >
-              Try again - you've got this!
+              Try again - you&apos;ve got this!
             </ThemedText>
           )}
           {showCorrectAnswer && (
             <ThemedText
               style={[styles.subtitle, { color: Colors.subduedTextColor }]}
             >
-              Here's what to say next time
+              Here&apos;s what to say next time
             </ThemedText>
           )}
         </View>

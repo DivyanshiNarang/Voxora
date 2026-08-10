@@ -1,5 +1,6 @@
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/ctx/AuthContext";
+import { getEdgeFunctionErrorMessage } from "@/lib/edgeFunctionError";
 import { supabase } from "@/utils/supabase";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -118,8 +119,9 @@ export function Paywall({
       await refreshProfile();
       onClose();
     } catch (err) {
-      console.error("Failed to start trial:", err);
-      Toast.show({ type: 'error', text1: "Could not start trial. Please try again." });
+      const message = await getEdgeFunctionErrorMessage(err);
+      console.error("Failed to start trial:", message);
+      Toast.show({ type: 'error', text1: message });
     } finally {
       setIsStartingTrial(false);
     }
@@ -275,7 +277,7 @@ export function Paywall({
           {/* Footer */}
           <Text style={styles.footer}>Try 7 days free. Cancel anytime.</Text>
           <Text style={styles.footerNote}>
-            We'll send you a reminder before your trial ends.
+            We&apos;ll send you a reminder before your trial ends.
           </Text>
 
           {/* Rating */}
@@ -295,7 +297,7 @@ export function Paywall({
           <View style={styles.testimonial}>
             <Text style={styles.testimonialText}>
               Convo has the best curriculum among all the language
-              learning-related apps I've tried. Higher recommended.
+              learning-related apps I&apos;ve tried. Higher recommended.
             </Text>
             <Text style={styles.testimonialAuthor}>
               - App Store User from South Korea
